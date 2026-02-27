@@ -1,21 +1,7 @@
-# claspでアップロードしないファイル
+# すべて除外
+**/**
 
-# 設定ファイル（機密情報）
-config.json
-
-# ドキュメント（すべてのMarkdownファイル）
-*.md
-**/*.md
-
-# その他のファイル
-.gitignore
-.claspignore
-
-# 古いファイル名
-gas_code.gs
-
-# すべてのファイルを除外し、Code.gsとappsscript.jsonのみ許可
-*
+# Code.gsとappsscript.jsonのみ許可
 !Code.gs
 !appsscript.json
 
