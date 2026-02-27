@@ -35,6 +35,9 @@ build/
 # clasp
 .clasp.json
 
+# Apple certificates (NEVER commit)
+.certificates/
+
 # Xcode
 *.xcodeproj/
 *.xcworkspace/

@@ -1,6 +1,6 @@
 name: BipolarAI
 options:
-  bundleIdPrefix: com.bipolarai
+  bundleIdPrefix: jp.mt-inn
   deploymentTarget:
     iOS: "16.0"
   xcodeVersion: "15.0"
@@ -27,7 +27,7 @@ targets:
       - path: BipolarAI/Resources/Assets.xcassets
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.bipolarai.app
+        PRODUCT_BUNDLE_IDENTIFIER: jp.mt-inn.bipolarai
         INFOPLIST_FILE: BipolarAI/Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: BipolarAI/Resources/BipolarAI.entitlements
         CODE_SIGN_STYLE: Automatic
