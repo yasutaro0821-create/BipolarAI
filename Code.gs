@@ -16,7 +16,7 @@ const CFG = {
   SHEET_SETTINGS_WEIGHTS: 'Settings_Weights',
   SHEET_ENABLED_METRICS: 'Enabled_Metrics',
   SERVICE_NAME: 'bipolar-ai-gas',
-  VERSION: 'v1.1.0'
+  VERSION: 'v1.2.0'
 };
 
 /** ====== OpenAI API設定 =========================================== */
@@ -57,6 +57,28 @@ function _median(arr) {
   const sorted = arr.slice().sort(function(a, b) { return a - b; });
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/** シート内で指定日付の行番号を返す（見つからなければ -1） */
+function _findRowByDate(sheet, dateStr) {
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return -1;
+
+  var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var dateCol = -1;
+  for (var c = 0; c < header.length; c++) {
+    if (String(header[c]).trim() === 'date') { dateCol = c; break; }
+  }
+  if (dateCol < 0) return -1;
+
+  var dates = sheet.getRange(2, dateCol + 1, lastRow - 1, 1).getValues();
+  for (var i = dates.length - 1; i >= 0; i--) {
+    if (String(dates[i][0]).trim() === String(dateStr).trim()) {
+      return i + 2; // 1-based + header row
+    }
+  }
+  return -1;
 }
 
 /** Settings_Algorithmからパラメータを読む */
@@ -135,10 +157,17 @@ function doPost(e) {
     if (!raw) return _json({ ok: false, error: 'empty body' });
 
     var inputData = JSON.parse(raw);
+    var action = inputData.action || 'checkin';
+
+    // アクション分岐
+    if (action === 'health_sync') {
+      return _handleHealthSync(inputData);
+    }
+
     var settings = _loadAlgorithmSettings();
     var weights = _loadWeights();
 
-    // 1. Daily_Logに保存
+    // 1. Daily_Logに保存（upsert: ヘルスデータが先に入っていればマージ）
     var logId = _saveDailyLog(inputData);
 
     // 2. Thinking判定（OpenAI）
@@ -187,7 +216,96 @@ function doPost(e) {
   }
 }
 
-/** ====== Daily_Log保存 =========================================== */
+/** ====== HealthKit同期ハンドラ ===================================== */
+function _handleHealthSync(data) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+
+    if (!data.date) return _json({ ok: false, error: 'date is required' });
+
+    var sh = _sheetOrThrow(CFG.SHEET_DAILY_LOG);
+    var lastCol = sh.getLastColumn();
+    if (lastCol < 1) {
+      sh.appendRow(['date', 'mood_score', 'journal_text', 'q_mood_stage', 'q_thinking_stage', 'q_body_stage', 'q_behavior_stage', 'q4_status', 'meds_am_taken', 'meds_pm_taken', 'sleep_min', 'nap_min', 'steps', 'active_energy_kcal', 'intake_energy_kcal', 'alcohol_drinks', 'mindfulness_min']);
+      lastCol = sh.getLastColumn();
+    }
+    var header = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+    var healthFields = ['sleep_min', 'nap_min', 'steps', 'active_energy_kcal', 'intake_energy_kcal', 'alcohol_drinks', 'mindfulness_min'];
+
+    var existingRowIdx = _findRowByDate(sh, data.date);
+    var hasMoodData = false;
+
+    if (existingRowIdx > 0) {
+      // 既存行のヘルスフィールドだけ更新
+      var current = sh.getRange(existingRowIdx, 1, 1, lastCol).getValues()[0];
+      header.forEach(function(col, idx) {
+        var key = String(col).trim();
+        if (healthFields.indexOf(key) >= 0 && data[key] !== undefined && data[key] !== null) {
+          current[idx] = data[key];
+        }
+      });
+      sh.getRange(existingRowIdx, 1, 1, lastCol).setValues([current]);
+
+      // mood_scoreが既にあるか確認
+      var moodIdx = -1;
+      for (var c = 0; c < header.length; c++) {
+        if (String(header[c]).trim() === 'mood_score') { moodIdx = c; break; }
+      }
+      hasMoodData = moodIdx >= 0 && current[moodIdx] !== '' && current[moodIdx] !== undefined && current[moodIdx] !== null;
+    } else {
+      // 新規行（ヘルスデータのみ）
+      var newRow = header.map(function(col) {
+        var key = String(col).trim();
+        if (key === 'date') return data.date;
+        if (healthFields.indexOf(key) >= 0 && data[key] !== undefined && data[key] !== null) return data[key];
+        return '';
+      });
+      sh.appendRow(newRow);
+    }
+
+    // mood_scoreが既にある場合は再計算
+    if (hasMoodData) {
+      // 既存行の全データをオブジェクトとして読み取る
+      var fullRow = sh.getRange(existingRowIdx, 1, 1, lastCol).getValues()[0];
+      var rowData = {};
+      header.forEach(function(col, idx) { rowData[String(col).trim()] = fullRow[idx]; });
+
+      var settings = _loadAlgorithmSettings();
+      var weights = _loadWeights();
+      var thinkingResult = _analyzeThinking(rowData);
+      var calcResult = _calculateNetStageAndDanger(rowData, thinkingResult, settings, weights);
+      var drivers = _extractTopDrivers(calcResult);
+      var coping3 = _extractCoping3(calcResult);
+      _saveDailyOutput(rowData, calcResult, drivers, coping3, thinkingResult);
+
+      return _json({
+        ok: true,
+        action: 'health_sync',
+        date: data.date,
+        health_updated: true,
+        recalculated: true,
+        net_stage: calcResult.netStage,
+        danger: calcResult.danger,
+        risk_color: calcResult.riskColor
+      });
+    }
+
+    return _json({
+      ok: true,
+      action: 'health_sync',
+      date: data.date,
+      health_updated: true,
+      recalculated: false,
+      note: 'ヘルスデータ保存済み。気分チェックイン待ち。'
+    });
+
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** ====== Daily_Log保存（upsert: 同日の行があれば更新、なければ追加） */
 function _saveDailyLog(data) {
   var sh = _sheetOrThrow(CFG.SHEET_DAILY_LOG);
   var lastCol = sh.getLastColumn();
@@ -196,12 +314,30 @@ function _saveDailyLog(data) {
     lastCol = sh.getLastColumn();
   }
   var header = sh.getRange(1, 1, 1, lastCol).getValues()[0];
-  var row = header.map(function(col) {
-    var v = data[col];
-    return (v === undefined || v === null) ? '' : v;
-  });
-  sh.appendRow(row);
-  return sh.getLastRow();
+
+  var existingRow = _findRowByDate(sh, data.date);
+
+  if (existingRow > 0) {
+    // 既存行をマージ更新（新データで上書き、未指定フィールドは既存値を保持）
+    var current = sh.getRange(existingRow, 1, 1, lastCol).getValues()[0];
+    header.forEach(function(col, idx) {
+      var key = String(col).trim();
+      var v = data[key];
+      if (v !== undefined && v !== null) {
+        current[idx] = v;
+      }
+    });
+    sh.getRange(existingRow, 1, 1, lastCol).setValues([current]);
+    return existingRow;
+  } else {
+    // 新規行を追加
+    var row = header.map(function(col) {
+      var v = data[col];
+      return (v === undefined || v === null) ? '' : v;
+    });
+    sh.appendRow(row);
+    return sh.getLastRow();
+  }
 }
 
 /** ====== Thinking判定（OpenAI）===================================== */
@@ -589,7 +725,7 @@ function _buildLineMessage(data, calcResult, drivers, coping3) {
   return lines.join('\n');
 }
 
-/** ====== Daily_Output保存 ========================================= */
+/** ====== Daily_Output保存（upsert） ================================ */
 function _saveDailyOutput(data, calcResult, drivers, coping3, thinkingResult) {
   var sh = _sheetOrThrow(CFG.SHEET_DAILY_OUTPUT);
   var lastCol = sh.getLastColumn();
@@ -618,12 +754,23 @@ function _saveDailyOutput(data, calcResult, drivers, coping3, thinkingResult) {
     version: CFG.VERSION
   };
 
-  var row = header.map(function(col) {
-    var v = outputData[col];
-    return (v === undefined || v === null) ? '' : v;
-  });
-  sh.appendRow(row);
-  return sh.getLastRow();
+  var existingRow = _findRowByDate(sh, data.date);
+
+  if (existingRow > 0) {
+    var row = header.map(function(col) {
+      var v = outputData[col];
+      return (v === undefined || v === null) ? '' : v;
+    });
+    sh.getRange(existingRow, 1, 1, lastCol).setValues([row]);
+    return existingRow;
+  } else {
+    var row = header.map(function(col) {
+      var v = outputData[col];
+      return (v === undefined || v === null) ? '' : v;
+    });
+    sh.appendRow(row);
+    return sh.getLastRow();
+  }
 }
 
 /** ====== Drivers_Long保存 ========================================= */
