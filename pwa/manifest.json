@@ -1,0 +1,20 @@
+{
+  "name": "双極AI - セルフマネジメント",
+  "short_name": "双極AI",
+  "description": "双極性障害のセルフマネジメントツール",
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f2f2f7",
+  "theme_color": "#007aff",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["health", "medical"],
+  "lang": "ja"
+}
