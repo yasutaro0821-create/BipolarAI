@@ -35,3 +35,31 @@ build/
 # clasp
 .clasp.json
 
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+*.ipa
+*.dSYM.zip
+*.dSYM
+*.hmap
+*.xcuserdata
+
+# iOS build artifacts
+Pods/
+Carthage/
+
+# 古い開発ログ（_vN系）
+*_v[0-9]*.md
+*完了*.md
+*手順*.md
+*推論*.md
+*診断*.md
+*修正*.md
+*確認*.md
+*コマンド*.md
+*エラー*.md
+deploy.ps1
+*.docx
+*.xlsx
+

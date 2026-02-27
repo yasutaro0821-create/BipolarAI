@@ -7,13 +7,17 @@
 //
 
 import SwiftUI
+import UserNotifications
 
 /// Rebootプログラム画面
 struct RebootView: View {
     let rebootStatus: RebootStatus
     @State private var selectedAction: RebootAction?
+    @State private var showingSnoozeSheet = false
+    @State private var showingHelpConfirm = false
+    @State private var rebootStarted = false
     @Environment(\.dismiss) var dismiss
-    
+
     enum RebootAction {
         case l1  // 3分（Resetだけ）
         case l2  // 5〜10分（Reset＋1行）
@@ -123,25 +127,108 @@ struct RebootView: View {
                     }
                 }
             }
+            .confirmationDialog("スヌーズ時間を選択", isPresented: $showingSnoozeSheet, titleVisibility: .visible) {
+                Button("1時間後") { scheduleSnooze(hours: 1) }
+                Button("3時間後") { scheduleSnooze(hours: 3) }
+                Button("明日の朝（9:00）") { scheduleSnoozeTomorrow() }
+                Button("キャンセル", role: .cancel) { }
+            }
+            .alert("支援者に通知を送りますか？", isPresented: $showingHelpConfirm) {
+                Button("送信", role: .destructive) { sendHelpNotification() }
+                Button("キャンセル", role: .cancel) { }
+            } message: {
+                Text("LINE Notify で支援者にあなたの状態を伝えます。")
+            }
         }
     }
     
-    /// Rebootを実行
+    /// Rebootを実行 — レベルに応じたガイドを表示し、完了リマインダーを設定
     private func executeReboot(_ action: RebootAction) {
-        // TODO: Rebootプログラムを実行
-        // 実際の実装では、各レベルのプログラムを実行します
+        rebootStarted = true
+        let (title, minutes): (String, Int) = {
+            switch action {
+            case .l1: return ("L1 Reset 完了リマインダー", 3)
+            case .l2: return ("L2 Reframe 完了リマインダー", 10)
+            case .l3: return ("L3 Reconnect 完了リマインダー", 15)
+            default:  return ("Reboot リマインダー", 5)
+            }
+        }()
+
+        // ローカル通知でリマインダーを設定
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = "お疲れ様！チェックインを完了しましょう。"
+            content.sound = .default
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: Double(minutes * 60), repeats: false)
+            let request = UNNotificationRequest(identifier: "reboot-\(action)", content: content, trigger: trigger)
+            center.add(request)
+        }
+
         dismiss()
     }
-    
+
     /// スヌーズオプションを表示
     private func showSnoozeOptions() {
-        // TODO: スヌーズ時間を選択するUIを表示
+        showingSnoozeSheet = true
+    }
+
+    /// 支援者に助けを求める（LINE Notify 経由）
+    private func requestHelp() {
+        showingHelpConfirm = true
+    }
+}
+
+// MARK: - Snooze & Help helpers
+extension RebootView {
+    private func scheduleSnooze(hours: Int) {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "双極AI Reboot"
+            content.body = "チェックインの時間です。少しだけ始めてみましょう。"
+            content.sound = .default
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: Double(hours * 3600), repeats: false)
+            let request = UNNotificationRequest(identifier: "reboot-snooze", content: content, trigger: trigger)
+            center.add(request)
+        }
         dismiss()
     }
-    
-    /// 支援者に助けを求める
-    private func requestHelp() {
-        // TODO: 支援者に通知を送信
+
+    private func scheduleSnoozeTomorrow() {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "双極AI Reboot"
+            content.body = "おはようございます。今日はチェックインしてみませんか？"
+            content.sound = .default
+            var dateComponents = DateComponents()
+            dateComponents.hour = 9
+            dateComponents.minute = 0
+            let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
+            let request = UNNotificationRequest(identifier: "reboot-snooze-tomorrow", content: content, trigger: trigger)
+            center.add(request)
+        }
+        dismiss()
+    }
+
+    private func sendHelpNotification() {
+        let level = rebootStatus.reboot_level ?? "不明"
+        let days = rebootStatus.days_since_last_checkin ?? 0
+        let message = "【双極AI SOS】\n\(days)日間チェックインがありません（レベル: \(level)）。\n本人が助けを求めています。声をかけてあげてください。"
+
+        Task {
+            do {
+                try await LineNotifyService.shared.sendMessage(message)
+            } catch {
+                // LINE未設定でもクラッシュしない
+                print("LINE Notify error: \(error)")
+            }
+        }
         dismiss()
     }
 }
