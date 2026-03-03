@@ -399,7 +399,7 @@ struct DashboardView: View {
     }
 
     private func alcoholStatus() -> MetricStatus {
-        guard let a = healthData?.alcohol_drinks else { return .missing }
+        guard healthData?.alcohol_drinks != nil else { return .missing }
         return .available  // 0杯でも「取得済み」
     }
 

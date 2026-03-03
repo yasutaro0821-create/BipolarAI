@@ -23,7 +23,7 @@ struct HealthMetricCard: View {
     let icon: String
     let color: Color
     let status: MetricStatus
-    let trend: [Double]?
+    var trend: [Double]? = nil
 
     var body: some View {
         HStack(spacing: 8) {
