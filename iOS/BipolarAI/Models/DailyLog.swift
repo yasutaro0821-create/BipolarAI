@@ -82,12 +82,14 @@ struct DailyLog: Codable {
         q_thinking_stage: Int? = nil,
         q_body_stage: Int? = nil,
         q_behavior_stage: Int? = nil,
-        q4_status: String? = "answered"
+        q4_status: String? = "answered",
+        meds_am_taken: Bool? = nil,
+        meds_pm_taken: Bool? = nil
     ) -> DailyLog {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withFullDate]
         let today = formatter.string(from: Date())
-        
+
         return DailyLog(
             date: today,
             mood_score: mood_score,
@@ -96,7 +98,9 @@ struct DailyLog: Codable {
             q_thinking_stage: q_thinking_stage,
             q_body_stage: q_body_stage,
             q_behavior_stage: q_behavior_stage,
-            q4_status: q4_status
+            q4_status: q4_status,
+            meds_am_taken: meds_am_taken,
+            meds_pm_taken: meds_pm_taken
         )
     }
 }

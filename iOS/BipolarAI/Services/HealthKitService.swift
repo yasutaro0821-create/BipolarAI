@@ -110,6 +110,121 @@ class HealthKitService {
         return data
     }
 
+    /// 過去N日間の日別データを取得（トレンド表示用）
+    func fetchDailyData(days: Int = 7) async throws -> [DailyHealthData] {
+        guard isHealthDataAvailable() else {
+            throw HealthKitError.notAvailable
+        }
+
+        let calendar = Calendar.current
+        let now = Date()
+        let startDate = calendar.date(byAdding: .day, value: -(days - 1), to: calendar.startOfDay(for: now))!
+        let endDate = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))!
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "M/d"
+
+        // 日付配列を作成
+        var dailyData: [DailyHealthData] = []
+        for i in 0..<days {
+            let date = calendar.date(byAdding: .day, value: i, to: startDate)!
+            dailyData.append(DailyHealthData(
+                date: date,
+                dateString: dateFormatter.string(from: date)
+            ))
+        }
+
+        // 歩数を日別取得
+        if let stepsData = try? await fetchDailyQuantity(.stepCount, from: startDate, to: endDate, unit: HKUnit.count(), days: days) {
+            for (index, value) in stepsData.enumerated() where index < dailyData.count {
+                dailyData[index].steps = value != nil ? Int(value!) : nil
+            }
+        }
+
+        // 消費カロリーを日別取得
+        if let energyData = try? await fetchDailyQuantity(.activeEnergyBurned, from: startDate, to: endDate, unit: HKUnit.kilocalorie(), days: days) {
+            for (index, value) in energyData.enumerated() where index < dailyData.count {
+                dailyData[index].active_energy_kcal = value != nil ? Int(value!) : nil
+            }
+        }
+
+        // 飲酒量を日別取得
+        if let alcoholData = try? await fetchDailyQuantity(.numberOfAlcoholicBeverages, from: startDate, to: endDate, unit: HKUnit.count(), days: days) {
+            for (index, value) in alcoholData.enumerated() where index < dailyData.count {
+                dailyData[index].alcohol_drinks = value != nil ? Int(value!) : nil
+            }
+        }
+
+        // 睡眠を日別取得
+        for i in 0..<days {
+            let dayStart = calendar.date(byAdding: .day, value: i, to: startDate)!
+            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+            if let sleepData = try? await fetchSleepData(from: dayStart, to: dayEnd) {
+                dailyData[i].sleep_min = sleepData.sleepMinutes > 0 ? sleepData.sleepMinutes : nil
+            }
+        }
+
+        // マインドフルネスを日別取得
+        for i in 0..<days {
+            let dayStart = calendar.date(byAdding: .day, value: i, to: startDate)!
+            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+            if let mindful = try? await fetchMindfulSession(from: dayStart, to: dayEnd) {
+                dailyData[i].mindfulness_min = mindful > 0 ? mindful : nil
+            }
+        }
+
+        return dailyData
+    }
+
+    /// 日別の累積数値データを取得（HKStatisticsCollectionQuery）
+    private func fetchDailyQuantity(_ identifier: HKQuantityTypeIdentifier, from startDate: Date, to endDate: Date, unit: HKUnit, days: Int) async throws -> [Double?] {
+        guard let quantityType = HKQuantityType.quantityType(forIdentifier: identifier) else {
+            throw HealthKitError.dataNotFound
+        }
+
+        let calendar = Calendar.current
+        let interval = DateComponents(day: 1)
+        let anchorDate = calendar.startOfDay(for: startDate)
+
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let query = HKStatisticsCollectionQuery(
+                quantityType: quantityType,
+                quantitySamplePredicate: predicate,
+                options: .cumulativeSum,
+                anchorDate: anchorDate,
+                intervalComponents: interval
+            )
+
+            query.initialResultsHandler = { _, results, error in
+                if let error = error {
+                    continuation.resume(throwing: HealthKitError.readError(error))
+                    return
+                }
+
+                guard let results = results else {
+                    continuation.resume(returning: Array(repeating: nil, count: days))
+                    return
+                }
+
+                var values: [Double?] = []
+                results.enumerateStatistics(from: startDate, to: endDate) { statistics, _ in
+                    if let sum = statistics.sumQuantity() {
+                        values.append(sum.doubleValue(for: unit))
+                    } else {
+                        values.append(nil)
+                    }
+                }
+                // enumerateStatistics may include endDate, trim to days count
+                let trimmed = Array(values.prefix(days))
+                continuation.resume(returning: trimmed)
+            }
+
+            healthStore.execute(query)
+        }
+    }
+
     // MARK: - Private Methods
 
     /// 累積型の数値データを取得（歩数、kcal、飲酒量など）

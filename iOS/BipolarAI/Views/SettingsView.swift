@@ -16,6 +16,7 @@ struct SettingsView: View {
     @State private var isCheckingGAS: Bool = false
 
     var body: some View {
+        NavigationView {
         Form {
             // HealthKit接続状態
             Section(header: Text("HealthKit 接続状態")) {
@@ -71,6 +72,13 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
+                HStack {
+                    Text("仕様書")
+                    Spacer()
+                    Text("Vol.8 Phase1")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
 
             // 注意事項
@@ -79,8 +87,20 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
+
+            // 履歴データ管理
+            Section(header: Text("データ管理")) {
+                HStack {
+                    Text("保存済み履歴")
+                    Spacer()
+                    Text("\(HistoryStore.shared.records.count) 件")
+                        .foregroundColor(.secondary)
+                }
+            }
         }
         .navigationTitle("設定")
+        .navigationBarTitleDisplayMode(.inline)
+        }
         .task {
             await checkHealthKit()
             await checkGAS()

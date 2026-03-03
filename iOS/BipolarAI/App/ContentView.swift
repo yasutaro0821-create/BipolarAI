@@ -3,14 +3,39 @@
 //  BipolarAI
 //
 //  Created on 2025-12-22
-//  Main content view
+//  Main content view with TabView navigation
 //
 
 import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        InputView()
+        TabView {
+            DashboardView()
+                .tabItem {
+                    Label("今日", systemImage: "heart.text.square")
+                }
+
+            InputView()
+                .tabItem {
+                    Label("記録", systemImage: "square.and.pencil")
+                }
+
+            HistoryView()
+                .tabItem {
+                    Label("履歴", systemImage: "clock.arrow.circlepath")
+                }
+
+            CopingLibraryView()
+                .tabItem {
+                    Label("対処法", systemImage: "list.bullet.clipboard")
+                }
+
+            SettingsView()
+                .tabItem {
+                    Label("設定", systemImage: "gearshape")
+                }
+        }
     }
 }
 
@@ -19,4 +44,3 @@ struct ContentView_Previews: PreviewProvider {
         ContentView()
     }
 }
-

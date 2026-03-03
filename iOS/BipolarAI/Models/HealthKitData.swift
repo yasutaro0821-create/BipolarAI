@@ -30,6 +30,54 @@ struct HealthKitData: Codable {
     // 体重（Phase2以降）
     var weight_kg: Double?
     
+    /// 表示用フォーマット済みの値を返す
+    func formattedSleep() -> String {
+        guard let min = sleep_min else { return "未取得" }
+        let hours = min / 60
+        let mins = min % 60
+        if hours > 0 {
+            return "\(hours)時間\(mins)分"
+        }
+        return "\(mins)分"
+    }
+
+    func formattedNap() -> String {
+        guard let min = nap_min, min > 0 else { return "なし" }
+        return "\(min)分"
+    }
+
+    func formattedSteps() -> String {
+        guard let s = steps else { return "未取得" }
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        return (formatter.string(from: NSNumber(value: s)) ?? "\(s)") + " 歩"
+    }
+
+    func formattedActiveEnergy() -> String {
+        guard let e = active_energy_kcal else { return "未取得" }
+        return "\(e) kcal"
+    }
+
+    func formattedIntakeEnergy() -> String {
+        guard let e = intake_energy_kcal else { return "未取得" }
+        return "\(e) kcal"
+    }
+
+    func formattedMindfulness() -> String {
+        guard let m = mindfulness_min else { return "未取得" }
+        return "\(m) 分"
+    }
+
+    func formattedAlcohol() -> String {
+        guard let a = alcohol_drinks else { return "未取得" }
+        return a == 0 ? "0 杯" : "\(a) 杯"
+    }
+
+    func formattedWeight() -> String {
+        guard let w = weight_kg else { return "未設定" }
+        return String(format: "%.1f kg", w)
+    }
+
     /// DailyLogに統合
     func mergeInto(_ log: inout DailyLog) {
         if let steps = steps {
@@ -57,5 +105,18 @@ struct HealthKitData: Codable {
             log.weight_kg = weight_kg
         }
     }
+}
+
+/// 日別HealthKitデータ（トレンド表示用）
+struct DailyHealthData: Identifiable {
+    var id: String { dateString }
+    let date: Date
+    var dateString: String  // "3/1", "3/2" ...
+    var steps: Int?
+    var sleep_min: Int?
+    var active_energy_kcal: Int?
+    var mindfulness_min: Int?
+    var alcohol_drinks: Int?
+    var weight_kg: Double?
 }
 

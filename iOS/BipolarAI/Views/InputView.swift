@@ -3,12 +3,12 @@
 //  BipolarAI
 //
 //  Created on 2025-12-22
-//  Input view for Mood + 4 fixed questions
+//  Input view for Mood + 4 fixed questions + medication
 //
 
 import SwiftUI
 
-/// 入力画面（Mood + 定型質問4本）
+/// 入力画面（Mood + 定型質問4本 + 服薬）
 struct InputView: View {
     @StateObject private var viewModel = InputViewModel()
     @State private var journalText: String = ""
@@ -17,24 +17,16 @@ struct InputView: View {
     @State private var calculationResult: CalculationResult?
     @State private var errorMessage: String?
     @State private var rebootSheet: RebootStatus?
-    @State private var healthStatus: String = ""
+    @State private var showSubmitSuccess: Bool = false
 
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 12) {
-                    // HealthKit ステータス表示
-                    if !healthStatus.isEmpty {
-                        Text(healthStatus)
-                            .font(.caption)
-                            .foregroundColor(.green)
-                            .padding(.horizontal)
-                    }
-
                     // Mood選択
                     StageSelectorView(
                         selectedStage: $viewModel.moodStage,
-                        title: "気分（Mood）"
+                        title: "気分（総合）"
                     )
 
                     // 定型質問4本
@@ -75,6 +67,39 @@ struct InputView: View {
                             .cornerRadius(6)
                     }
 
+                    // 服薬記録
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("服薬")
+                            .font(.subheadline.weight(.semibold))
+
+                        HStack(spacing: 16) {
+                            Toggle(isOn: $viewModel.medsAmTaken) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "sun.max.fill")
+                                        .font(.caption)
+                                        .foregroundColor(.orange)
+                                    Text("AM（朝）")
+                                        .font(.subheadline)
+                                }
+                            }
+                            .toggleStyle(.switch)
+
+                            Toggle(isOn: $viewModel.medsPmTaken) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "moon.fill")
+                                        .font(.caption)
+                                        .foregroundColor(.indigo)
+                                    Text("PM（夕）")
+                                        .font(.subheadline)
+                                }
+                            }
+                            .toggleStyle(.switch)
+                        }
+                    }
+                    .padding(10)
+                    .background(Color.gray.opacity(0.06))
+                    .cornerRadius(10)
+
                     // ジャーナルテキスト入力
                     VStack(alignment: .leading, spacing: 4) {
                         Text("ジャーナル（任意）")
@@ -87,6 +112,18 @@ struct InputView: View {
                             .cornerRadius(8)
                     }
                     .padding(.horizontal, 4)
+
+                    // 送信成功メッセージ
+                    if showSubmitSuccess {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                            Text("送信しました！")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundColor(.green)
+                        }
+                        .transition(.opacity)
+                    }
 
                     // 送信ボタン
                     Button(action: {
@@ -123,15 +160,8 @@ struct InputView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
             }
-            .navigationTitle("双極AI")
+            .navigationTitle("記録")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(destination: SettingsView()) {
-                        Image(systemName: "gearshape")
-                    }
-                }
-            }
             .sheet(isPresented: $showResult) {
                 if let result = calculationResult {
                     ResultView(result: result)
@@ -139,9 +169,6 @@ struct InputView: View {
             }
             .sheet(item: $rebootSheet) { status in
                 RebootView(rebootStatus: status)
-            }
-            .task {
-                await fetchHealthStatus()
             }
         }
     }
@@ -151,33 +178,16 @@ struct InputView: View {
         viewModel.moodStage != nil
     }
 
-    /// HealthKitステータス確認
-    private func fetchHealthStatus() async {
-        do {
-            let data = try await HealthKitService.shared.fetchTodayData()
-            var parts: [String] = []
-            if let steps = data.steps, steps > 0 { parts.append("歩数:\(steps)") }
-            if let sleep = data.sleep_min, sleep > 0 { parts.append("睡眠:\(sleep)分") }
-            if let energy = data.active_energy_kcal, energy > 0 { parts.append("消費:\(energy)kcal") }
-            if parts.isEmpty {
-                healthStatus = "🔗 HealthKit接続済み（データ取得待ち）"
-            } else {
-                healthStatus = "🔗 " + parts.joined(separator: " / ")
-            }
-        } catch {
-            healthStatus = "⚠️ HealthKit未接続"
-        }
-    }
-
     /// データ送信
     private func submitData() {
         guard let moodStage = viewModel.moodStage else {
-            errorMessage = "気分（Mood）を選択してください"
+            errorMessage = "気分（総合）を選択してください"
             return
         }
 
         isSubmitting = true
         errorMessage = nil
+        showSubmitSuccess = false
 
         Task {
             do {
@@ -198,7 +208,9 @@ struct InputView: View {
                     q_thinking_stage: viewModel.qThinkingStage,
                     q_body_stage: viewModel.qBodyStage,
                     q_behavior_stage: viewModel.qBehaviorStage,
-                    q4_status: viewModel.q4Status.rawValue
+                    q4_status: viewModel.q4Status.rawValue,
+                    meds_am_taken: viewModel.medsAmTaken ? true : nil,
+                    meds_pm_taken: viewModel.medsPmTaken ? true : nil
                 )
 
                 // HealthKitデータをDailyLogに統合
@@ -209,8 +221,37 @@ struct InputView: View {
 
                 await MainActor.run {
                     self.calculationResult = result
-                    self.showResult = true
                     self.isSubmitting = false
+
+                    // 履歴に保存
+                    HistoryStore.shared.save(log: log, result: result)
+
+                    // 前回結果をUserDefaultsに保存
+                    if let data = try? JSONEncoder().encode(result) {
+                        UserDefaults.standard.set(data, forKey: "lastCalculationResult")
+                    }
+
+                    // 服薬状態をUserDefaultsに保存（ダッシュボード表示用）
+                    let todayKey = log.date
+                    if viewModel.medsAmTaken {
+                        UserDefaults.standard.set(true, forKey: "medsAmTaken_\(todayKey)")
+                    }
+                    if viewModel.medsPmTaken {
+                        UserDefaults.standard.set(true, forKey: "medsPmTaken_\(todayKey)")
+                    }
+
+                    // フォームリセット
+                    viewModel.reset()
+                    journalText = ""
+
+                    // 送信成功表示
+                    showSubmitSuccess = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        withAnimation { showSubmitSuccess = false }
+                    }
+
+                    // 結果表示
+                    self.showResult = true
 
                     // Rebootが必要な場合は表示
                     if result.reboot.reboot_needed {
@@ -235,4 +276,17 @@ class InputViewModel: ObservableObject {
     @Published var qBodyStage: Int?
     @Published var qBehaviorStage: Int?
     @Published var q4Status: Constants.Q4Status = .answered
+    @Published var medsAmTaken: Bool = false
+    @Published var medsPmTaken: Bool = false
+
+    func reset() {
+        moodStage = nil
+        qMoodStage = nil
+        qThinkingStage = nil
+        qBodyStage = nil
+        qBehaviorStage = nil
+        q4Status = .answered
+        medsAmTaken = false
+        medsPmTaken = false
+    }
 }
