@@ -6,6 +6,8 @@
 	<string>ja</string>
 	<key>CFBundleDisplayName</key>
 	<string>双極AI</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
