@@ -93,8 +93,8 @@ struct StageSelectorView: View {
                         }
                     }
                 }
-                // 5個なので右側にスペーサー
-                Color.clear.frame(maxWidth: .infinity, height: 36)
+                // 5個なので右側にスペーサー（上段と幅を揃える）
+                Spacer().frame(height: 36)
             }
         }
         .padding(10)
