@@ -8,6 +8,30 @@
 
 import SwiftUI
 
+/// 記録対象日の選択肢
+enum RecordDateOption: String, CaseIterable, Identifiable {
+    case yesterday = "昨日"
+    case today = "今日"
+    case twoDaysAgo = "2日前"
+    case threeDaysAgo = "3日前"
+    case custom = "日付指定"
+
+    var id: String { rawValue }
+
+    /// 対象日のDateを返す（customの場合はnilで別途DatePickerで指定）
+    func date() -> Date? {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        switch self {
+        case .yesterday: return calendar.date(byAdding: .day, value: -1, to: today)
+        case .today: return today
+        case .twoDaysAgo: return calendar.date(byAdding: .day, value: -2, to: today)
+        case .threeDaysAgo: return calendar.date(byAdding: .day, value: -3, to: today)
+        case .custom: return nil
+        }
+    }
+}
+
 /// 入力画面（定型質問4本 + 気分（総合）+ ジャーナル）
 struct InputView: View {
     @StateObject private var viewModel = InputViewModel()
@@ -19,13 +43,91 @@ struct InputView: View {
     @State private var rebootSheet: RebootStatus?
     @State private var showSubmitSuccess: Bool = false
 
+    // 日付選択
+    @State private var selectedDateOption: RecordDateOption = .yesterday
+    @State private var customDate: Date = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+
     /// 初回入力完了時のコールバック（ContentViewから使用）
     var onSubmitSuccess: (() -> Void)?
+
+    /// 実際の記録対象日
+    private var recordDate: Date {
+        selectedDateOption.date() ?? Calendar.current.startOfDay(for: customDate)
+    }
+
+    /// 記録対象日の表示テキスト
+    private var recordDateDisplay: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "M月d日（E）"
+        return formatter.string(from: recordDate)
+    }
 
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 12) {
+                    // 日付セレクタ
+                    VStack(spacing: 8) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "calendar")
+                                .foregroundColor(.blue)
+                                .font(.subheadline)
+                            Text("記録する日")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Text(recordDateDisplay)
+                                .font(.subheadline.weight(.bold))
+                                .foregroundColor(.blue)
+                        }
+
+                        // 日付オプションボタン
+                        HStack(spacing: 6) {
+                            ForEach(RecordDateOption.allCases) { option in
+                                Button(action: {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        selectedDateOption = option
+                                    }
+                                }) {
+                                    Text(option.rawValue)
+                                        .font(.system(size: 11, weight: .medium))
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.8)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 6)
+                                        .frame(maxWidth: .infinity)
+                                        .background(
+                                            selectedDateOption == option
+                                                ? Color.blue.opacity(0.15)
+                                                : Color.gray.opacity(0.08)
+                                        )
+                                        .foregroundColor(
+                                            selectedDateOption == option
+                                                ? .blue
+                                                : .secondary
+                                        )
+                                        .cornerRadius(6)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        // カスタム日付ピッカー
+                        if selectedDateOption == .custom {
+                            DatePicker(
+                                "日付",
+                                selection: $customDate,
+                                in: ...Date(),
+                                displayedComponents: .date
+                            )
+                            .datePickerStyle(.compact)
+                            .environment(\.locale, Locale(identifier: "ja_JP"))
+                        }
+                    }
+                    .padding(12)
+                    .background(Color.blue.opacity(0.04))
+                    .cornerRadius(10)
+
                     // ①気分
                     StageSelectorView(
                         selectedStage: $viewModel.qMoodStage,
@@ -73,13 +175,13 @@ struct InputView: View {
                         title: "気分（総合）"
                     )
 
-                    // 服薬確認（1日1回）
+                    // 服薬確認
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 6) {
                             Image(systemName: "pills.fill")
                                 .foregroundColor(.blue)
                                 .font(.subheadline)
-                            Text("昨日の服薬")
+                            Text("\(recordDateDisplay)の服薬")
                                 .font(.subheadline.weight(.semibold))
                         }
 
@@ -164,7 +266,7 @@ struct InputView: View {
                                     .foregroundColor(.white)
                             } else {
                                 Image(systemName: "paperplane.fill")
-                                Text("送信")
+                                Text("\(recordDateDisplay)の記録を送信")
                                     .fontWeight(.semibold)
                             }
                         }
@@ -216,19 +318,26 @@ struct InputView: View {
         errorMessage = nil
         showSubmitSuccess = false
 
+        // 記録対象日のISO文字列
+        let targetDate = recordDate
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate]
+        let dateString = formatter.string(from: targetDate)
+
         Task {
             do {
-                // HealthKitデータ取得
+                // 記録対象日のHealthKitデータ取得
                 var healthData: HealthKitData?
                 do {
-                    healthData = try await HealthKitService.shared.fetchTodayData()
-                    print("✅ HealthKit data fetched: steps=\(healthData?.steps ?? 0)")
+                    healthData = try await HealthKitService.shared.fetchData(for: targetDate)
+                    print("✅ HealthKit data fetched for \(dateString): steps=\(healthData?.steps ?? 0)")
                 } catch {
                     print("⚠️ HealthKit fetch failed: \(error.localizedDescription)")
                 }
 
-                // DailyLog作成
-                var log = DailyLog.today(
+                // DailyLog作成（対象日の日付で）
+                var log = DailyLog(
+                    date: dateString,
                     mood_score: moodStage,
                     journal_text: journalText.isEmpty ? nil : journalText,
                     q_mood_stage: viewModel.qMoodStage,

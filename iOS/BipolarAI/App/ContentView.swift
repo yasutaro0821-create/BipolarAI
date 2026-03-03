@@ -12,12 +12,13 @@ struct ContentView: View {
     @AppStorage("lastCheckinDate") private var lastCheckinDate: String = ""
     @State private var checkinCompleted: Bool = false
 
-    /// 今日のチェックインが必要か
+    /// 昨日のチェックインが必要か（朝に記録するため、昨日分の記録済みかを確認）
     private var needsCheckin: Bool {
         if checkinCompleted { return false }
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withFullDate]
         let today = formatter.string(from: Date())
+        // 今日すでに何かを記録していればOK（昨日分を今朝記録したケース）
         return lastCheckinDate != today
     }
 

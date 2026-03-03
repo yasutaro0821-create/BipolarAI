@@ -67,13 +67,17 @@ class HealthKitService {
 
     /// 今日のデータを取得
     func fetchTodayData() async throws -> HealthKitData {
+        return try await fetchData(for: Date())
+    }
+
+    /// 指定日のデータを取得
+    func fetchData(for date: Date) async throws -> HealthKitData {
         guard isHealthDataAvailable() else {
             throw HealthKitError.notAvailable
         }
 
         let calendar = Calendar.current
-        let now = Date()
-        let startOfDay = calendar.startOfDay(for: now)
+        let startOfDay = calendar.startOfDay(for: date)
         let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
 
         var data = HealthKitData()
