@@ -69,6 +69,12 @@ struct RebootStatus: Codable, Identifiable {
     var journal_streak: Int?
     var days_since_last_checkin: Int?
     var days_since_last_journal: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case reboot_needed, reboot_level, reboot_step
+        case checkin_streak, journal_streak
+        case days_since_last_checkin, days_since_last_journal
+    }
 }
 
 /// デバッグ情報（開発中のみ）
