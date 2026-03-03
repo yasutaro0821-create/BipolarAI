@@ -22,8 +22,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode 15
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+      - name: Select Xcode
+        run: |
+          # Use latest available Xcode 16 on macos-14 runner
+          XCODE_PATH=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_PATH" ]; then
+            XCODE_PATH=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          fi
+          echo "Using Xcode at: $XCODE_PATH"
+          sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
 
       - name: Show Xcode version
         run: xcodebuild -version
@@ -80,6 +87,7 @@ jobs:
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          set -o pipefail
           xcodebuild archive \
             -project BipolarAI.xcodeproj \
             -scheme $SCHEME \
@@ -93,7 +101,7 @@ jobs:
       # ── Export IPA ──────────────────────────────────
       - name: Create ExportOptions.plist
         run: |
-          cat > $RUNNER_TEMP/ExportOptions.plist << 'PLIST'
+          cat > $RUNNER_TEMP/ExportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -110,10 +118,11 @@ jobs:
             <true/>
           </dict>
           </plist>
-          PLIST
+          EOF
 
       - name: Export IPA
         run: |
+          set -o pipefail
           xcodebuild -exportArchive \
             -archivePath $RUNNER_TEMP/BipolarAI.xcarchive \
             -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist \
@@ -132,9 +141,10 @@ jobs:
           printf '%s' "$APP_STORE_CONNECT_API_KEY_BASE64" | openssl base64 -d -A \
             > ~/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8
 
-          # Upload IPA using xcrun altool
+          # Upload IPA using xcrun notarytool / altool
           IPA_PATH=$(find $RUNNER_TEMP/export -name "*.ipa" | head -1)
           if [ -n "$IPA_PATH" ]; then
+            echo "Uploading IPA: $IPA_PATH"
             xcrun altool --upload-app \
               --type ios \
               --file "$IPA_PATH" \
@@ -143,6 +153,7 @@ jobs:
             echo "✅ Upload to TestFlight succeeded!"
           else
             echo "❌ IPA not found in export directory"
+            ls -la $RUNNER_TEMP/export/ || echo "Export directory does not exist"
             exit 1
           fi
 
