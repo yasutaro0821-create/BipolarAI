@@ -24,6 +24,9 @@ struct BipolarAIApp: App {
                     } catch {
                         print("⚠️ HealthKit authorization failed: \(error.localizedDescription)")
                     }
+
+                    // 通知権限リクエスト + 朝8時リマインダー設定
+                    await NotificationService.shared.requestAuthorization()
                 }
         }
     }

@@ -96,6 +96,32 @@ class GASService {
         }
     }
     
+    /// CopingLibrary取得（CrisisPlan_Sourceシートのデータ）
+    func fetchCopingLibrary() async throws -> [[String]] {
+        guard let url = URL(string: "\(Constants.GAS_ENDPOINT_URL)?mode=coping_library") else {
+            throw GASServiceError.invalidURL
+        }
+
+        let (data, response) = try await URLSession.shared.data(from: url)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw GASServiceError.invalidResponse
+        }
+
+        // GASから返るJSON: { ok: true, data: [[row0], [row1], ...] }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let ok = json["ok"] as? Bool, ok,
+              let rawData = json["data"] as? [[Any]] else {
+            throw GASServiceError.invalidResponse
+        }
+
+        // Any → String に変換
+        return rawData.map { row in
+            row.map { String(describing: $0) }
+        }
+    }
+
     /// ヘルスチェック
     func healthCheck() async throws -> Bool {
         guard let url = URL(string: "\(Constants.GAS_ENDPOINT_URL)?mode=health") else {

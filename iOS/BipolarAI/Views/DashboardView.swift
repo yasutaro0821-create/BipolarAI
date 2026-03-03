@@ -3,28 +3,23 @@
 //  BipolarAI
 //
 //  Created on 2026-03-04
-//  HealthKit infographic dashboard (main tab)
+//  HealthKit infographic dashboard (main tab) — vertical full-width layout
 //
 
 import SwiftUI
 import Charts
 
-/// ダッシュボード画面（HealthKitインフォグラフィック + 前回結果サマリ）
+/// ダッシュボード画面（縦長フルワイドインフォグラフィック + 前回結果サマリ）
 struct DashboardView: View {
     @State private var healthData: HealthKitData?
     @State private var dailyTrend: [DailyHealthData] = []
     @State private var isLoading = true
     @State private var lastResult: CalculationResult?
 
-    private let columns = [
-        GridItem(.flexible(), spacing: 8),
-        GridItem(.flexible(), spacing: 8)
-    ]
-
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: 14) {
                     // ① 今日の日付
                     dateHeaderView
 
@@ -33,18 +28,15 @@ struct DashboardView: View {
                         lastResultSummaryView(result)
                     }
 
-                    // ③ HealthKit カードグリッド
+                    // ③ HealthKit メトリクス（縦長1列フルワイド）
                     if isLoading {
                         ProgressView("HealthKitデータを取得中...")
                             .padding()
                     } else {
-                        healthCardsGridView
+                        healthMetricsView
                     }
 
-                    // ④ 服薬ステータス
-                    medicationStatusView
-
-                    // ⑤ 7日間トレンドグラフ
+                    // ④ 7日間トレンドグラフ
                     if !dailyTrend.isEmpty {
                         trendChartsView
                     }
@@ -121,131 +113,140 @@ struct DashboardView: View {
         .cornerRadius(12)
     }
 
-    // MARK: - HealthKitカードグリッド
+    // MARK: - HealthKit メトリクス（縦長1列フルワイド）
 
-    private var healthCardsGridView: some View {
-        LazyVGrid(columns: columns, spacing: 8) {
+    private var healthMetricsView: some View {
+        VStack(spacing: 10) {
             // 睡眠
-            HealthMetricCard(
+            FullWidthMetricCard(
                 title: "睡眠",
                 value: healthData?.formattedSleep() ?? "未取得",
                 icon: "bed.double.fill",
-                color: .indigo,
-                status: metricStatus(healthData?.sleep_min),
-                trend: dailyTrend.compactMap { $0.sleep_min }.isEmpty ? nil :
-                    dailyTrend.map { Double($0.sleep_min ?? 0) }
-            )
+                color: .indigo
+            ) {
+                if let sleepMin = healthData?.sleep_min {
+                    SleepProgressBar(minutes: sleepMin)
+                }
+            }
 
             // 歩数
-            HealthMetricCard(
+            FullWidthMetricCard(
                 title: "歩数",
                 value: healthData?.formattedSteps() ?? "未取得",
                 icon: "figure.walk",
-                color: .green,
-                status: metricStatus(healthData?.steps),
-                trend: dailyTrend.compactMap { $0.steps }.isEmpty ? nil :
-                    dailyTrend.map { Double($0.steps ?? 0) }
-            )
+                color: .green
+            ) {
+                if let steps = healthData?.steps {
+                    GoalProgressBar(
+                        current: Double(steps),
+                        goal: 10000,
+                        color: .green,
+                        unit: "歩"
+                    )
+                }
+            }
 
             // 消費カロリー
-            HealthMetricCard(
+            FullWidthMetricCard(
                 title: "消費カロリー",
                 value: healthData?.formattedActiveEnergy() ?? "未取得",
                 icon: "flame.fill",
-                color: .orange,
-                status: metricStatus(healthData?.active_energy_kcal),
-                trend: dailyTrend.compactMap { $0.active_energy_kcal }.isEmpty ? nil :
-                    dailyTrend.map { Double($0.active_energy_kcal ?? 0) }
-            )
+                color: .orange
+            ) {
+                if let kcal = healthData?.active_energy_kcal {
+                    GoalProgressBar(
+                        current: Double(kcal),
+                        goal: 500,
+                        color: .orange,
+                        unit: "kcal"
+                    )
+                }
+            }
 
             // 摂取カロリー
-            HealthMetricCard(
+            FullWidthMetricCard(
                 title: "摂取カロリー",
                 value: healthData?.formattedIntakeEnergy() ?? "未取得",
                 icon: "fork.knife",
-                color: .yellow,
-                status: metricStatus(healthData?.intake_energy_kcal)
-            )
+                color: .yellow
+            ) {
+                if let kcal = healthData?.intake_energy_kcal {
+                    RangeProgressBar(
+                        current: Double(kcal),
+                        low: 1000,
+                        high: 3000,
+                        color: .yellow
+                    )
+                }
+            }
 
             // マインドフルネス
-            HealthMetricCard(
+            FullWidthMetricCard(
                 title: "マインドフルネス",
                 value: healthData?.formattedMindfulness() ?? "未取得",
                 icon: "brain.head.profile",
-                color: .purple,
-                status: metricStatus(healthData?.mindfulness_min),
-                trend: dailyTrend.compactMap { $0.mindfulness_min }.isEmpty ? nil :
-                    dailyTrend.map { Double($0.mindfulness_min ?? 0) }
-            )
+                color: .purple
+            ) {
+                if let min = healthData?.mindfulness_min {
+                    HStack(spacing: 8) {
+                        GoalProgressBar(
+                            current: Double(min),
+                            goal: 10,
+                            color: .purple,
+                            unit: "分"
+                        )
+                        if min >= 10 {
+                            Text("✓")
+                                .font(.caption.weight(.bold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.purple)
+                                .cornerRadius(4)
+                        }
+                    }
+                }
+            }
 
             // 飲酒
-            HealthMetricCard(
+            FullWidthMetricCard(
                 title: "飲酒",
                 value: healthData?.formattedAlcohol() ?? "未取得",
                 icon: "wineglass.fill",
-                color: .pink,
-                status: alcoholStatus(),
-                trend: dailyTrend.compactMap { $0.alcohol_drinks }.isEmpty ? nil :
-                    dailyTrend.map { Double($0.alcohol_drinks ?? 0) }
-            )
+                color: alcoholLevelColor()
+            ) {
+                if let drinks = healthData?.alcohol_drinks {
+                    AlcoholIndicator(drinks: drinks)
+                }
+            }
 
             // 体重
-            HealthMetricCard(
+            FullWidthMetricCard(
                 title: "体重",
                 value: healthData?.formattedWeight() ?? "未設定",
                 icon: "scalemass.fill",
-                color: .teal,
-                status: healthData?.weight_kg != nil ? .available : .missing
-            )
+                color: .teal
+            ) {
+                EmptyView()
+            }
 
             // 仮眠
-            HealthMetricCard(
+            FullWidthMetricCard(
                 title: "仮眠",
                 value: healthData?.formattedNap() ?? "なし",
                 icon: "zzz",
-                color: .cyan,
-                status: healthData?.nap_min != nil && healthData!.nap_min! > 0 ? .available : .noData
-            )
-        }
-    }
-
-    // MARK: - 服薬ステータス
-
-    private var medicationStatusView: some View {
-        let today = todayKey()
-        let amTaken = UserDefaults.standard.bool(forKey: "medsAmTaken_\(today)")
-        let pmTaken = UserDefaults.standard.bool(forKey: "medsPmTaken_\(today)")
-
-        return VStack(alignment: .leading, spacing: 6) {
-            Text("服薬")
-                .font(.subheadline.weight(.semibold))
-
-            HStack(spacing: 16) {
-                HStack(spacing: 4) {
-                    Image(systemName: amTaken ? "checkmark.circle.fill" : "circle")
-                        .foregroundColor(amTaken ? .green : .gray)
-                    Text("AM（朝）")
-                        .font(.subheadline)
-                    Text(amTaken ? "済み" : "未服用")
-                        .font(.caption)
-                        .foregroundColor(amTaken ? .green : .secondary)
-                }
-
-                HStack(spacing: 4) {
-                    Image(systemName: pmTaken ? "checkmark.circle.fill" : "circle")
-                        .foregroundColor(pmTaken ? .green : .gray)
-                    Text("PM（夕）")
-                        .font(.subheadline)
-                    Text(pmTaken ? "済み" : "未服用")
-                        .font(.caption)
-                        .foregroundColor(pmTaken ? .green : .secondary)
+                color: .cyan
+            ) {
+                if let nap = healthData?.nap_min, nap > 0 {
+                    GoalProgressBar(
+                        current: Double(nap),
+                        goal: 30,
+                        color: .cyan,
+                        unit: "分"
+                    )
                 }
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.gray.opacity(0.06))
-        .cornerRadius(12)
     }
 
     // MARK: - 7日間トレンドグラフ
@@ -257,10 +258,7 @@ struct DashboardView: View {
                 // 歩数トレンド
                 let stepsData = dailyTrend.filter { $0.steps != nil }
                 if !stepsData.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("歩数（7日間）")
-                            .font(.subheadline.weight(.semibold))
-
+                    TrendChartCard(title: "歩数（7日間）") {
                         Chart {
                             ForEach(dailyTrend) { data in
                                 BarMark(
@@ -284,19 +282,20 @@ struct DashboardView: View {
                             }
                         }
                     }
-                    .padding(12)
-                    .background(Color.gray.opacity(0.04))
-                    .cornerRadius(12)
                 }
 
                 // 睡眠トレンド
                 let sleepData = dailyTrend.filter { $0.sleep_min != nil }
                 if !sleepData.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("睡眠時間（7日間）")
-                            .font(.subheadline.weight(.semibold))
-
+                    TrendChartCard(title: "睡眠時間（7日間）") {
                         Chart {
+                            // 正常範囲バンド
+                            RectangleMark(
+                                yStart: .value("Low", 6.0),
+                                yEnd: .value("High", 9.0)
+                            )
+                            .foregroundStyle(Color.green.opacity(0.08))
+
                             ForEach(dailyTrend) { data in
                                 let hours = Double(data.sleep_min ?? 0) / 60.0
                                 LineMark(
@@ -334,9 +333,38 @@ struct DashboardView: View {
                             }
                         }
                     }
-                    .padding(12)
-                    .background(Color.gray.opacity(0.04))
-                    .cornerRadius(12)
+                }
+
+                // 体重トレンド
+                let weightData = dailyTrend.filter { $0.weight_kg != nil }
+                if !weightData.isEmpty {
+                    TrendChartCard(title: "体重（7日間）") {
+                        Chart {
+                            ForEach(dailyTrend) { data in
+                                if let w = data.weight_kg {
+                                    LineMark(
+                                        x: .value("日付", data.dateString),
+                                        y: .value("kg", w)
+                                    )
+                                    .foregroundStyle(Color.teal)
+                                    .interpolationMethod(.catmullRom)
+                                    .symbol(Circle())
+                                }
+                            }
+                        }
+                        .frame(height: 100)
+                        .chartYAxis {
+                            AxisMarks(position: .leading) { value in
+                                if let dv = value.as(Double.self) {
+                                    AxisValueLabel {
+                                        Text(String(format: "%.0f", dv))
+                                            .font(.caption2)
+                                    }
+                                }
+                                AxisGridLine()
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -387,22 +415,6 @@ struct DashboardView: View {
         }
     }
 
-    private func todayKey() -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withFullDate]
-        return formatter.string(from: Date())
-    }
-
-    private func metricStatus(_ value: Int?) -> MetricStatus {
-        guard let v = value else { return .missing }
-        return v > 0 ? .available : .noData
-    }
-
-    private func alcoholStatus() -> MetricStatus {
-        guard healthData?.alcohol_drinks != nil else { return .missing }
-        return .available  // 0杯でも「取得済み」
-    }
-
     private func stageColor(_ stage: Int) -> Color {
         if stage > 0 { return .red }
         if stage < 0 { return .blue }
@@ -428,5 +440,263 @@ struct DashboardView: View {
         case "DarkRed": return .red
         default: return .gray
         }
+    }
+
+    private func alcoholLevelColor() -> Color {
+        guard let drinks = healthData?.alcohol_drinks else { return .gray }
+        if drinks == 0 { return .green }
+        if drinks <= 2 { return .yellow }
+        return .red
+    }
+}
+
+// MARK: - フルワイドメトリクスカード
+
+struct FullWidthMetricCard<Content: View>: View {
+    let title: String
+    let value: String
+    let icon: String
+    let color: Color
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // ヘッダー行
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .font(.system(size: 14))
+                        .foregroundColor(color)
+                    Text(title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Text(value)
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+            }
+
+            // コンテンツ（プログレスバーなど）
+            content
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            LinearGradient(
+                colors: [color.opacity(0.08), color.opacity(0.02)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        )
+        .cornerRadius(12)
+    }
+}
+
+// MARK: - 睡眠プログレスバー
+
+struct SleepProgressBar: View {
+    let minutes: Int
+
+    private var hours: Double { Double(minutes) / 60.0 }
+    private var isNormal: Bool { hours >= 6 && hours <= 9 }
+
+    var body: some View {
+        VStack(spacing: 4) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    // 背景
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.gray.opacity(0.15))
+                        .frame(height: 12)
+
+                    // 正常範囲マーカー（6-9h）
+                    let normalStart = CGFloat(6.0 / 12.0) * geo.size.width
+                    let normalEnd = CGFloat(9.0 / 12.0) * geo.size.width
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.green.opacity(0.2))
+                        .frame(width: normalEnd - normalStart, height: 12)
+                        .offset(x: normalStart)
+
+                    // 実際の値
+                    let progress = min(hours / 12.0, 1.0)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(isNormal ? Color.indigo : Color.orange)
+                        .frame(width: max(geo.size.width * CGFloat(progress), 4), height: 12)
+                }
+            }
+            .frame(height: 12)
+
+            // ラベル
+            HStack {
+                Text("0h")
+                Spacer()
+                Text("6h")
+                    .foregroundColor(.green)
+                Spacer()
+                Text("9h")
+                    .foregroundColor(.green)
+                Spacer()
+                Text("12h")
+            }
+            .font(.system(size: 9, weight: .medium))
+            .foregroundColor(.secondary)
+        }
+    }
+}
+
+// MARK: - 目標プログレスバー
+
+struct GoalProgressBar: View {
+    let current: Double
+    let goal: Double
+    let color: Color
+    let unit: String
+
+    private var progress: Double { min(current / goal, 1.5) }
+    private var achieved: Bool { current >= goal }
+
+    var body: some View {
+        VStack(spacing: 4) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    // 背景
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.gray.opacity(0.15))
+                        .frame(height: 10)
+
+                    // 目標ライン
+                    let goalPos = min(1.0 / 1.5, 1.0) * geo.size.width
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.4))
+                        .frame(width: 1.5, height: 14)
+                        .offset(x: goalPos)
+
+                    // プログレス
+                    let width = max(geo.size.width * CGFloat(progress / 1.5), 4)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(achieved ? color : color.opacity(0.6))
+                        .frame(width: min(width, geo.size.width), height: 10)
+                }
+            }
+            .frame(height: 14)
+
+            // ラベル
+            HStack {
+                Text("0")
+                Spacer()
+                Text("目標: \(Int(goal))\(unit)")
+                    .foregroundColor(achieved ? color : .secondary)
+            }
+            .font(.system(size: 9, weight: .medium))
+            .foregroundColor(.secondary)
+        }
+    }
+}
+
+// MARK: - 範囲プログレスバー
+
+struct RangeProgressBar: View {
+    let current: Double
+    let low: Double
+    let high: Double
+    let color: Color
+
+    private var isInRange: Bool { current >= low && current <= high }
+
+    var body: some View {
+        VStack(spacing: 4) {
+            GeometryReader { geo in
+                let maxVal = high * 1.3
+                ZStack(alignment: .leading) {
+                    // 背景
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.gray.opacity(0.15))
+                        .frame(height: 10)
+
+                    // 正常範囲
+                    let lowX = CGFloat(low / maxVal) * geo.size.width
+                    let highX = CGFloat(high / maxVal) * geo.size.width
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.green.opacity(0.2))
+                        .frame(width: highX - lowX, height: 10)
+                        .offset(x: lowX)
+
+                    // 現在値マーカー
+                    let pos = CGFloat(min(current / maxVal, 1.0)) * geo.size.width
+                    Circle()
+                        .fill(isInRange ? Color.green : Color.orange)
+                        .frame(width: 12, height: 12)
+                        .offset(x: max(pos - 6, 0))
+                }
+            }
+            .frame(height: 12)
+
+            HStack {
+                Text("\(Int(low))")
+                Spacer()
+                Text(isInRange ? "正常範囲内" : "範囲外")
+                    .foregroundColor(isInRange ? .green : .orange)
+                Spacer()
+                Text("\(Int(high))")
+            }
+            .font(.system(size: 9, weight: .medium))
+            .foregroundColor(.secondary)
+        }
+    }
+}
+
+// MARK: - 飲酒インジケータ
+
+struct AlcoholIndicator: View {
+    let drinks: Int
+
+    private var levelColor: Color {
+        if drinks == 0 { return .green }
+        if drinks <= 2 { return .yellow }
+        return .red
+    }
+
+    private var levelText: String {
+        if drinks == 0 { return "飲酒なし 👍" }
+        if drinks <= 2 { return "適量" }
+        return "注意"
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            // グラスアイコン
+            HStack(spacing: 2) {
+                ForEach(0..<min(drinks, 5), id: \.self) { _ in
+                    Image(systemName: "wineglass.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(levelColor)
+                }
+            }
+
+            Spacer()
+
+            Text(levelText)
+                .font(.caption2.weight(.medium))
+                .foregroundColor(levelColor)
+        }
+    }
+}
+
+// MARK: - トレンドチャートカード
+
+struct TrendChartCard<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            content
+        }
+        .padding(12)
+        .background(Color.gray.opacity(0.04))
+        .cornerRadius(12)
     }
 }

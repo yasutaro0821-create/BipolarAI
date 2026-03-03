@@ -3,103 +3,112 @@
 //  BipolarAI
 //
 //  Created on 2025-12-22
-//  Stage selection button component (-5..+5)
+//  Stage selection slider component (-5..+5)
 //
 
 import SwiftUI
 
-/// ステージ選択ボタン（-5..+5）
-struct StageButton: View {
-    let stage: Int
-    let isSelected: Bool
-    let action: () -> Void
-
-    private var stageColor: Color {
-        if !isSelected { return Color.gray.opacity(0.2) }
-        switch stage {
-        case -5: return Color.red
-        case -4: return Color.red.opacity(0.8)
-        case -3: return Color.orange
-        case -2: return Color.orange.opacity(0.7)
-        case -1: return Color.yellow.opacity(0.8)
-        case 0: return Color.gray.opacity(0.5)
-        case 1: return Color.mint.opacity(0.7)
-        case 2: return Color.green.opacity(0.6)
-        case 3: return Color.green.opacity(0.7)
-        case 4: return Color.blue.opacity(0.7)
-        case 5: return Color.blue
-        default: return Color.gray
-        }
-    }
-
-    var body: some View {
-        Button(action: action) {
-            Text("\(stage >= 0 ? "+" : "")\(stage)")
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundColor(isSelected ? .white : .primary)
-                .frame(maxWidth: .infinity)
-                .frame(height: 36)
-                .background(stageColor)
-                .cornerRadius(6)
-        }
-    }
-}
-
-/// ステージ選択ビュー（-5..+5の11段階、2行表示）
+/// ステージ選択スライダー（-5..+5）
 struct StageSelectorView: View {
     @Binding var selectedStage: Int?
     let title: String
 
+    @State private var sliderValue: Double = 0
+    @State private var hasInteracted: Bool = false
+
+    /// スライダー値に応じた色（青→灰→赤グラデーション）
+    private var stageColor: Color {
+        guard hasInteracted, let stage = selectedStage else { return .gray }
+        let v = Double(stage)
+        if v < 0 {
+            // 鬱方向: 青系（-5=濃い青, -1=薄い青）
+            let intensity = abs(v) / 5.0
+            return Color(
+                red: 0.2 * (1 - intensity) + 0.1 * intensity,
+                green: 0.4 * (1 - intensity) + 0.3 * intensity,
+                blue: 0.6 + 0.4 * intensity
+            )
+        } else if v > 0 {
+            // 躁方向: 赤系（+1=薄い赤, +5=濃い赤）
+            let intensity = v / 5.0
+            return Color(
+                red: 0.6 + 0.4 * intensity,
+                green: 0.4 * (1 - intensity) + 0.2 * intensity,
+                blue: 0.2 * (1 - intensity)
+            )
+        }
+        return .gray
+    }
+
+    /// 値のテキスト表示
+    private var valueText: String {
+        guard hasInteracted, let stage = selectedStage else { return "未選択" }
+        return "\(stage >= 0 ? "+" : "")\(stage)"
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(spacing: 8) {
+            // タイトル行 + 値表示
             HStack {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
-                if let stage = selectedStage {
+                Spacer()
+                Text(valueText)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundColor(hasInteracted ? stageColor : .secondary)
+                    .animation(.easeInOut(duration: 0.2), value: selectedStage)
+            }
+
+            // スライダー
+            VStack(spacing: 4) {
+                Slider(value: $sliderValue, in: -5...5, step: 1) { editing in
+                    if editing && !hasInteracted {
+                        hasInteracted = true
+                    }
+                    if !editing {
+                        selectedStage = Int(sliderValue)
+                    }
+                }
+                .tint(stageColor)
+                .onChange(of: sliderValue) { newValue in
+                    if hasInteracted {
+                        selectedStage = Int(newValue)
+                    }
+                }
+
+                // 目盛りラベル
+                HStack {
+                    Text("-5")
                     Spacer()
-                    Text("\(stage >= 0 ? "+" : "")\(stage)")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundColor(.blue)
+                    Text("-3")
+                    Spacer()
+                    Text("0")
+                    Spacer()
+                    Text("+3")
+                    Spacer()
+                    Text("+5")
                 }
-            }
-
-            // 上段: -5 〜 0
-            HStack(spacing: 4) {
-                ForEach(-5...0, id: \.self) { stage in
-                    StageButton(
-                        stage: stage,
-                        isSelected: selectedStage == stage
-                    ) {
-                        if selectedStage == stage {
-                            selectedStage = nil
-                        } else {
-                            selectedStage = stage
-                        }
-                    }
-                }
-            }
-
-            // 下段: +1 〜 +5
-            HStack(spacing: 4) {
-                ForEach(1...5, id: \.self) { stage in
-                    StageButton(
-                        stage: stage,
-                        isSelected: selectedStage == stage
-                    ) {
-                        if selectedStage == stage {
-                            selectedStage = nil
-                        } else {
-                            selectedStage = stage
-                        }
-                    }
-                }
-                // 5個なので右側にスペーサー（上段と幅を揃える）
-                Spacer().frame(height: 36)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundColor(.secondary)
             }
         }
-        .padding(10)
-        .background(Color.gray.opacity(0.06))
-        .cornerRadius(10)
+        .padding(12)
+        .background(
+            LinearGradient(
+                colors: [
+                    hasInteracted ? stageColor.opacity(0.1) : Color.gray.opacity(0.04),
+                    Color.gray.opacity(0.03)
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        )
+        .cornerRadius(12)
+        .onAppear {
+            if let stage = selectedStage {
+                sliderValue = Double(stage)
+                hasInteracted = true
+            }
+        }
     }
 }
-

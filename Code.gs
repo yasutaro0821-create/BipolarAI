@@ -1,6 +1,6 @@
 /**
  * ======================================================================
- * 双極AI GAS エンドポイント（v1.1.0）
+ * 双極AI GAS エンドポイント（v1.3.0）
  * ======================================================================
  */
 
@@ -16,7 +16,7 @@ const CFG = {
   SHEET_SETTINGS_WEIGHTS: 'Settings_Weights',
   SHEET_ENABLED_METRICS: 'Enabled_Metrics',
   SERVICE_NAME: 'bipolar-ai-gas',
-  VERSION: 'v1.2.0'
+  VERSION: 'v1.3.0'
 };
 
 /** ====== OpenAI API設定 =========================================== */
@@ -137,12 +137,89 @@ function _loadWeights() {
   return defaults;
 }
 
+/** ====== LINE Messaging API ======================================= */
+function _sendLineMessage(message) {
+  var props = PropertiesService.getScriptProperties();
+  var token = props.getProperty('LINE_CHANNEL_ACCESS_TOKEN');
+  var userId = props.getProperty('LINE_USER_ID');
+  if (!token || !userId) {
+    Logger.log('LINE credentials not set (LINE_CHANNEL_ACCESS_TOKEN / LINE_USER_ID)');
+    return;
+  }
+  try {
+    UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
+      method: 'post',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + token
+      },
+      payload: JSON.stringify({
+        to: userId,
+        messages: [{ type: 'text', text: message }]
+      })
+    });
+    Logger.log('LINE message sent successfully');
+  } catch (e) {
+    Logger.log('LINE send error: ' + e);
+  }
+}
+
+/** 朝8時リマインダー（GASタイムトリガーから呼び出し） */
+function checkMorningReminder() {
+  var today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  try {
+    var sh = _sheetOrThrow(CFG.SHEET_DAILY_LOG);
+    var row = _findRowByDate(sh, today);
+    var hasMood = false;
+    if (row > 0) {
+      var lastCol = sh.getLastColumn();
+      var header = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+      var moodIdx = -1;
+      for (var c = 0; c < header.length; c++) {
+        if (String(header[c]).trim() === 'mood_score') { moodIdx = c; break; }
+      }
+      if (moodIdx >= 0) {
+        var val = sh.getRange(row, moodIdx + 1).getValue();
+        hasMood = (val !== '' && val !== undefined && val !== null);
+      }
+    }
+    if (!hasMood) {
+      _sendLineMessage('おはようございます！\n\n今日の気分チェックインがまだです。\nアプリを開いて記録しましょう 📝');
+    }
+  } catch (e) {
+    Logger.log('Morning reminder error: ' + e);
+  }
+}
+
+/** ====== Google Calendar連携 ====================================== */
+function _getCalendarData(dateStr) {
+  try {
+    var date = new Date(dateStr);
+    var start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    var end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    var events = CalendarApp.getDefaultCalendar().getEvents(start, end);
+    var totalMin = events.reduce(function(s, e) {
+      return s + (e.getEndTime().getTime() - e.getStartTime().getTime()) / 60000;
+    }, 0);
+    // 16時間(960分)を基準とした占有率
+    return { event_count: events.length, occupancy_pct: Math.round(totalMin / 960 * 100) };
+  } catch (e) {
+    Logger.log('Calendar data error: ' + e);
+    return { event_count: 0, occupancy_pct: 0 };
+  }
+}
+
 /** ====== ヘルスチェック =========================================== */
 function doGet(e) {
   try {
     var mode = (e.parameter.mode || '').toLowerCase();
     if (mode === 'health') {
       return _json({ ok: true, service: CFG.SERVICE_NAME, version: CFG.VERSION, now: _nowISO() });
+    }
+    if (mode === 'coping_library') {
+      var sh = _sheetOrThrow(CFG.SHEET_CRISIS_PLAN);
+      var allData = sh.getDataRange().getValues();
+      return _json({ ok: true, data: allData });
     }
     return _json({ ok: true, note: 'Use ?mode=health for health check', service: CFG.SERVICE_NAME, version: CFG.VERSION });
   } catch (err) {
@@ -167,6 +244,13 @@ function doPost(e) {
     var settings = _loadAlgorithmSettings();
     var weights = _loadWeights();
 
+    // 0. Google Calendar データ取得・マージ
+    if (inputData.date) {
+      var calData = _getCalendarData(inputData.date);
+      inputData.calendar_event_count = calData.event_count;
+      inputData.calendar_occupancy_pct = calData.occupancy_pct;
+    }
+
     // 1. Daily_Logに保存（upsert: ヘルスデータが先に入っていればマージ）
     var logId = _saveDailyLog(inputData);
 
@@ -190,7 +274,10 @@ function doPost(e) {
     _saveDriversLong(outputId, drivers);
     _saveCopingLong(outputId, coping3);
 
-    // 8. Reboot判定
+    // 8. LINE Messaging API送信（全レポート自動送信）
+    try { _sendLineMessage(lineMsg); } catch (lineErr) { Logger.log('LINE send failed: ' + lineErr); }
+
+    // 9. Reboot判定
     var rebootStatus = _checkRebootStatus(inputData.date, settings);
 
     return _json({
@@ -207,6 +294,8 @@ function doPost(e) {
       coping3: coping3,
       reboot: rebootStatus,
       line_message: lineMsg,
+      calendar_event_count: inputData.calendar_event_count || 0,
+      calendar_occupancy_pct: inputData.calendar_occupancy_pct || 0,
       line_send_immediate: calculationResult.riskColor === 'Orange' || calculationResult.riskColor === 'Red' || calculationResult.riskColor === 'DarkRed',
       version: CFG.VERSION
     });
@@ -449,6 +538,18 @@ function _calculateNetStageAndDanger(data, thinkingResult, settings, weights) {
     var thStage = _clamp(Number(thinkingResult.thinking_stage), -5, 5);
     objItems.push({ domain: 'thinking', stage: thStage, weight: weights.thinking || 2 });
     domainContributions.thinking = { stage: thStage, weight: weights.thinking || 2, raw: thStage, desc: 'Thinking ' + (thStage >= 0 ? '+' : '') + thStage };
+  }
+
+  // Calendar (event density)
+  if (data.calendar_event_count !== undefined && data.calendar_event_count !== null && data.calendar_event_count !== '') {
+    var evtCount = Number(data.calendar_event_count);
+    var calStage = 0;
+    if (evtCount <= 2) calStage = 0;           // 通常
+    else if (evtCount <= 5) calStage = 1;       // やや活動的
+    else calStage = 2;                          // 過活動→躁寄り
+    var calWeight = weights.calendar || 2;
+    objItems.push({ domain: 'calendar', stage: calStage, weight: calWeight });
+    domainContributions.calendar = { stage: calStage, weight: calWeight, raw: evtCount, desc: '予定 ' + evtCount + '件' };
   }
 
   // Intake kcal
