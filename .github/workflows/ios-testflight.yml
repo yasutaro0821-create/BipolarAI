@@ -47,8 +47,13 @@ jobs:
           PROFILE_PATH=$RUNNER_TEMP/profile.mobileprovision
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
 
-          echo -n "$APPLE_CERTIFICATE_BASE64" | base64 --decode > $CERTIFICATE_PATH
-          echo -n "$APPLE_PROVISIONING_PROFILE_BASE64" | base64 --decode > $PROFILE_PATH
+          # Use printf + openssl for reliable binary decoding on macOS
+          printf '%s' "$APPLE_CERTIFICATE_BASE64" | openssl base64 -d -A > $CERTIFICATE_PATH
+          printf '%s' "$APPLE_PROVISIONING_PROFILE_BASE64" | openssl base64 -d -A > $PROFILE_PATH
+
+          # Verify decoded files
+          echo "Certificate .p12 size: $(wc -c < $CERTIFICATE_PATH) bytes"
+          echo "Provisioning profile size: $(wc -c < $PROFILE_PATH) bytes"
 
           # Create temporary keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
@@ -124,7 +129,7 @@ jobs:
         run: |
           # Decode API key
           mkdir -p ~/private_keys
-          echo -n "$APP_STORE_CONNECT_API_KEY_BASE64" | base64 --decode \
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_BASE64" | openssl base64 -d -A \
             > ~/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8
 
           # Upload IPA using xcrun altool
