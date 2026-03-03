@@ -31,10 +31,17 @@ struct CalculationResult: Codable {
     // Reboot状態
     var reboot: RebootStatus
     
+    // AIフィードバック
+    var ai_feedback: String?
+
+    // カレンダー
+    var calendar_event_count: Int?
+    var calendar_occupancy_pct: Int?
+
     // LINE通知
     var line_message: String?
     var line_send_immediate: Bool?
-    
+
     // バージョン
     var version: String?
     

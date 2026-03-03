@@ -19,40 +19,57 @@ struct ResultView: View {
                 VStack(spacing: 20) {
                     // 主要指標
                     VStack(spacing: 12) {
-                        Text("計算結果")
+                        Text("評価結果")
                             .font(.title2)
                             .fontWeight(.bold)
-                        
+
                         HStack(spacing: 20) {
                             VStack {
-                                Text("NetStage")
+                                Text("総合スコア")
                                     .font(.caption)
                                 Text("\(result.net_stage >= 0 ? "+" : "")\(result.net_stage)")
                                     .font(.title)
                                     .fontWeight(.bold)
                                     .foregroundColor(stageColor(result.net_stage))
                             }
-                            
+
                             VStack {
-                                Text("Danger")
+                                Text("注意レベル")
                                     .font(.caption)
-                                Text("\(result.danger)")
+                                Text("\(result.danger)/5")
                                     .font(.title)
                                     .fontWeight(.bold)
                                     .foregroundColor(dangerColor(result.danger))
                             }
-                            
+
                             VStack {
-                                Text("RiskColor")
+                                Text("状態")
                                     .font(.caption)
-                                Text(result.risk_color)
-                                    .font(.title3)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(riskColor(result.risk_color))
+                                Circle()
+                                    .fill(riskColor(result.risk_color))
+                                    .frame(width: 24, height: 24)
                             }
                         }
                         .padding()
                         .background(Color.gray.opacity(0.1))
+                        .cornerRadius(12)
+                    }
+
+                    // AIフィードバック
+                    if let feedback = result.ai_feedback, !feedback.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "sparkles")
+                                    .foregroundColor(.purple)
+                                Text("AIからのフィードバック")
+                                    .font(.headline)
+                            }
+                            Text(feedback)
+                                .font(.subheadline)
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.purple.opacity(0.1))
                         .cornerRadius(12)
                     }
                     
@@ -156,7 +173,7 @@ struct ResultView: View {
                 }
                 .padding()
             }
-            .navigationTitle("結果")
+            .navigationTitle("評価結果")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {

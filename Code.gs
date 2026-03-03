@@ -191,21 +191,106 @@ function checkMorningReminder() {
   }
 }
 
-/** ====== Google Calendar連携 ====================================== */
+/** ====== Google Calendar連携（占有率詳細版） ====================== */
 function _getCalendarData(dateStr) {
   try {
     var date = new Date(dateStr);
     var start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     var end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
     var events = CalendarApp.getDefaultCalendar().getEvents(start, end);
-    var totalMin = events.reduce(function(s, e) {
+
+    var coreMin = 0;     // 平日コア(9-18)
+    var overtimeMin = 0; // 平日時間外
+    var weekendMin = 0;  // 休日勤務
+    var totalMin = 0;
+    var dayOfWeek = start.getDay(); // 0=日, 6=土
+
+    events.forEach(function(ev) {
+      var evStart = ev.getStartTime();
+      var evEnd = ev.getEndTime();
+      var durMin = (evEnd.getTime() - evStart.getTime()) / 60000;
+      totalMin += durMin;
+
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        weekendMin += durMin;
+      } else {
+        var startH = evStart.getHours() + evStart.getMinutes() / 60;
+        var endH = evEnd.getHours() + evEnd.getMinutes() / 60;
+        // コア時間(9-18)との重なり
+        var coreStart = Math.max(startH, 9);
+        var coreEnd = Math.min(endH, 18);
+        if (coreEnd > coreStart) {
+          coreMin += (coreEnd - coreStart) * 60;
+          overtimeMin += durMin - (coreEnd - coreStart) * 60;
+        } else {
+          overtimeMin += durMin;
+        }
+      }
+    });
+
+    // 週間占有率: 直近7日分
+    var weekStart = new Date(start.getTime() - 6 * 24 * 60 * 60 * 1000);
+    var weekEvents = CalendarApp.getDefaultCalendar().getEvents(weekStart, end);
+    var weekTotalMin = weekEvents.reduce(function(s, e) {
       return s + (e.getEndTime().getTime() - e.getStartTime().getTime()) / 60000;
     }, 0);
-    // 16時間(960分)を基準とした占有率
-    return { event_count: events.length, occupancy_pct: Math.round(totalMin / 960 * 100) };
+    // 週の稼働可能時間 = 5日×9h = 2700分
+    var weekOccupancyPct = Math.round(weekTotalMin / 2700 * 100);
+
+    return {
+      event_count: events.length,
+      occupancy_pct: Math.round(totalMin / 960 * 100),
+      week_occupancy_pct: weekOccupancyPct,
+      core_min: Math.round(coreMin),
+      overtime_min: Math.round(Math.max(overtimeMin, 0)),
+      weekend_min: Math.round(weekendMin),
+      total_min: Math.round(totalMin)
+    };
   } catch (e) {
     Logger.log('Calendar data error: ' + e);
-    return { event_count: 0, occupancy_pct: 0 };
+    return { event_count: 0, occupancy_pct: 0, week_occupancy_pct: 0, core_min: 0, overtime_min: 0, weekend_min: 0, total_min: 0 };
+  }
+}
+
+/** ====== AIフィードバック生成 ====================================== */
+function _generateAIFeedback(data, calcResult, drivers, coping3) {
+  try {
+    var apiKey = getOpenAIKey();
+    var prompt = '双極性障害のセルフマネジメントアプリの日次レポートです。以下のデータに基づき、ユーザーへの短い（2-3文）パーソナライズドフィードバックを日本語で生成してください。\n\n'
+      + '総合スコア: ' + calcResult.netStage + ' (主観: ' + calcResult.subjStage + ', 客観: ' + calcResult.objStage + ')\n'
+      + '注意レベル: ' + calcResult.danger + '/5\n'
+      + '主観と客観のズレ: ' + calcResult.gap + '\n'
+      + '主な要因: ' + drivers.map(function(d) { return d.description; }).filter(Boolean).join(', ') + '\n'
+      + '睡眠: ' + (data.sleep_min ? Math.round(data.sleep_min / 60) + '時間' : '不明') + '\n'
+      + '歩数: ' + (data.steps || '不明') + '\n'
+      + '服薬: 朝' + (data.meds_am_taken ? '○' : '×') + ' 夕' + (data.meds_pm_taken ? '○' : '×') + '\n'
+      + '飲酒: ' + (data.alcohol_drinks || 0) + '杯\n\n'
+      + '優しく、具体的で実用的なアドバイスを含めてください。専門用語は避けてください。';
+
+    var payload = {
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'あなたは双極性障害の当事者をサポートする共感的なAIアシスタントです。データに基づき短く的確なフィードバックを返します。' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 200
+    };
+
+    var response = UrlFetchApp.fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'post',
+      headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      payload: JSON.stringify(payload)
+    });
+
+    var responseData = JSON.parse(response.getContentText());
+    if (responseData.choices && responseData.choices[0]) {
+      return responseData.choices[0].message.content.trim();
+    }
+    return null;
+  } catch (err) {
+    Logger.log('AI Feedback error: ' + err);
+    return null;
   }
 }
 
@@ -274,10 +359,13 @@ function doPost(e) {
     _saveDriversLong(outputId, drivers);
     _saveCopingLong(outputId, coping3);
 
-    // 8. LINE Messaging API送信（全レポート自動送信）
+    // 8. AIフィードバック生成
+    var aiFeedback = _generateAIFeedback(inputData, calculationResult, drivers, coping3);
+
+    // 9. LINE Messaging API送信（全レポート自動送信）
     try { _sendLineMessage(lineMsg); } catch (lineErr) { Logger.log('LINE send failed: ' + lineErr); }
 
-    // 9. Reboot判定
+    // 10. Reboot判定
     var rebootStatus = _checkRebootStatus(inputData.date, settings);
 
     return _json({
@@ -294,6 +382,7 @@ function doPost(e) {
       coping3: coping3,
       reboot: rebootStatus,
       line_message: lineMsg,
+      ai_feedback: aiFeedback,
       calendar_event_count: inputData.calendar_event_count || 0,
       calendar_occupancy_pct: inputData.calendar_occupancy_pct || 0,
       line_send_immediate: calculationResult.riskColor === 'Orange' || calculationResult.riskColor === 'Red' || calculationResult.riskColor === 'DarkRed',
