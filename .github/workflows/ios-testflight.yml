@@ -132,6 +132,26 @@ jobs:
             -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist \
             -exportPath $RUNNER_TEMP/export
 
+      - name: Debug - Inspect IPA contents
+        run: |
+          IPA_PATH=$(find $RUNNER_TEMP/export -name "*.ipa" | head -1)
+          echo "IPA: $IPA_PATH"
+          mkdir -p /tmp/ipa_inspect
+          cd /tmp/ipa_inspect
+          unzip -o "$IPA_PATH"
+          echo "=== App bundle contents ==="
+          ls -la Payload/BipolarAI.app/
+          echo "=== Icon files ==="
+          find Payload/BipolarAI.app/ -name "AppIcon*" -o -name "Icon*" | head -20
+          echo "=== Assets.car ==="
+          find Payload/BipolarAI.app/ -name "*.car" | head -5
+          echo "=== Info.plist CFBundleIconName ==="
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIconName" Payload/BipolarAI.app/Info.plist 2>&1 || echo "CFBundleIconName NOT FOUND"
+          echo "=== Info.plist CFBundleIcons ==="
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIcons" Payload/BipolarAI.app/Info.plist 2>&1 || echo "CFBundleIcons NOT FOUND"
+          echo "=== Full Info.plist ==="
+          /usr/libexec/PlistBuddy -c "Print" Payload/BipolarAI.app/Info.plist 2>&1 | head -40
+
       # ── Upload to TestFlight ──────────────────────────
       - name: Upload to TestFlight
         env:

@@ -20,11 +20,8 @@ targets:
     sources:
       - path: BipolarAI
         excludes:
-          - "Resources/Assets.xcassets"
           - "Resources/Info.plist"
           - "Resources/BipolarAI.entitlements"
-    resources:
-      - path: BipolarAI/Resources/Assets.xcassets
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: jp.mt-inn.bipolarai
