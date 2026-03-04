@@ -13,7 +13,7 @@ struct Constants {
     /// GAS WebアプリURL
     /// TODO: 最新のデプロイURLに更新してください
     /// 確認方法: GASエディタ → デプロイ → 管理 → アクティブなデプロイ → URLをコピー
-    static let GAS_ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbwhfOswhC5kqt9C3kKU9CLcURie81ROL35pZD0UQgf0QvYKeWRNyEP7m4Y5RF8EQw1V/exec"
+    static let GAS_ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbx-Hw5A_GLRbq-9rYEdqqvJ4heJQLuSHf3Oyb541vbFUH8ocVuhbF5y1SzwnTJht399/exec"
     
     /// アプリバージョン
     static let APP_VERSION = "1.0.0"

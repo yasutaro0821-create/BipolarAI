@@ -25,6 +25,8 @@ struct HistoryRecord: Codable, Identifiable {
     var mindfulness_min: Int?
     var meds_am: Bool?
     var meds_pm: Bool?
+    var calendar_event_count: Int?
+    var calendar_occupancy_pct: Int?
     var coping3: [String]?
 }
 
@@ -58,6 +60,8 @@ class HistoryStore: ObservableObject {
             mindfulness_min: log.mindfulness_min,
             meds_am: log.meds_am_taken,
             meds_pm: log.meds_pm_taken,
+            calendar_event_count: result.calendar_event_count,
+            calendar_occupancy_pct: result.calendar_occupancy_pct,
             coping3: result.coping3.map { $0.text }
         )
 

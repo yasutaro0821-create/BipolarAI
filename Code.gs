@@ -385,6 +385,8 @@ function doPost(e) {
       ai_feedback: aiFeedback,
       calendar_event_count: inputData.calendar_event_count || 0,
       calendar_occupancy_pct: inputData.calendar_occupancy_pct || 0,
+      meds_am_taken: inputData.meds_am_taken,
+      meds_pm_taken: inputData.meds_pm_taken,
       line_send_immediate: calculationResult.riskColor === 'Orange' || calculationResult.riskColor === 'Red' || calculationResult.riskColor === 'DarkRed',
       version: CFG.VERSION
     });
@@ -405,7 +407,7 @@ function _handleHealthSync(data) {
     var sh = _sheetOrThrow(CFG.SHEET_DAILY_LOG);
     var lastCol = sh.getLastColumn();
     if (lastCol < 1) {
-      sh.appendRow(['date', 'mood_score', 'journal_text', 'q_mood_stage', 'q_thinking_stage', 'q_body_stage', 'q_behavior_stage', 'q4_status', 'meds_am_taken', 'meds_pm_taken', 'sleep_min', 'nap_min', 'steps', 'active_energy_kcal', 'intake_energy_kcal', 'alcohol_drinks', 'mindfulness_min']);
+      sh.appendRow(['date', 'mood_score', 'journal_text', 'q_mood_stage', 'q_thinking_stage', 'q_body_stage', 'q_behavior_stage', 'q4_status', 'meds_am_taken', 'meds_pm_taken', 'sleep_min', 'nap_min', 'steps', 'active_energy_kcal', 'intake_energy_kcal', 'alcohol_drinks', 'mindfulness_min', 'calendar_event_count', 'calendar_occupancy_pct']);
       lastCol = sh.getLastColumn();
     }
     var header = sh.getRange(1, 1, 1, lastCol).getValues()[0];
@@ -449,6 +451,13 @@ function _handleHealthSync(data) {
       var rowData = {};
       header.forEach(function(col, idx) { rowData[String(col).trim()] = fullRow[idx]; });
 
+      // カレンダーデータも取得してマージ（再計算に反映）
+      try {
+        var calData = _getCalendarData(data.date);
+        rowData.calendar_event_count = calData.event_count;
+        rowData.calendar_occupancy_pct = calData.occupancy_pct;
+      } catch (calErr) { Logger.log('Calendar fetch on health_sync failed: ' + calErr); }
+
       var settings = _loadAlgorithmSettings();
       var weights = _loadWeights();
       var thinkingResult = _analyzeThinking(rowData);
@@ -488,7 +497,7 @@ function _saveDailyLog(data) {
   var sh = _sheetOrThrow(CFG.SHEET_DAILY_LOG);
   var lastCol = sh.getLastColumn();
   if (lastCol < 1) {
-    sh.appendRow(['date', 'mood_score', 'journal_text', 'q_mood_stage', 'q_thinking_stage', 'q_body_stage', 'q_behavior_stage', 'q4_status', 'meds_am_taken', 'meds_pm_taken', 'sleep_min', 'nap_min', 'steps', 'active_energy_kcal', 'intake_energy_kcal', 'alcohol_drinks', 'mindfulness_min']);
+    sh.appendRow(['date', 'mood_score', 'journal_text', 'q_mood_stage', 'q_thinking_stage', 'q_body_stage', 'q_behavior_stage', 'q4_status', 'meds_am_taken', 'meds_pm_taken', 'sleep_min', 'nap_min', 'steps', 'active_energy_kcal', 'intake_energy_kcal', 'alcohol_drinks', 'mindfulness_min', 'calendar_event_count', 'calendar_occupancy_pct']);
     lastCol = sh.getLastColumn();
   }
   var header = sh.getRange(1, 1, 1, lastCol).getValues()[0];

@@ -38,6 +38,10 @@ struct CalculationResult: Codable {
     var calendar_event_count: Int?
     var calendar_occupancy_pct: Int?
 
+    // 服薬
+    var meds_am_taken: Bool?
+    var meds_pm_taken: Bool?
+
     // LINE通知
     var line_message: String?
     var line_send_immediate: Bool?

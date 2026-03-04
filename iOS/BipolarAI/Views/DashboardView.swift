@@ -19,6 +19,7 @@ struct DashboardView: View {
     @State private var healthData: HealthKitData?
     @State private var dailyTrend: [DailyHealthData] = []
     @State private var lastResult: CalculationResult?
+    @State private var selectedRecord: HistoryRecord?
     @State private var isLoading = true
 
     /// 表示対象日
@@ -135,8 +136,8 @@ struct DashboardView: View {
                 MetricTile(label: "摂取kcal", value: healthData?.formattedIntakeEnergy() ?? "—", icon: "fork.knife", color: .yellow)
                 MetricTile(label: "マインドフルネス", value: healthData?.formattedMindfulness() ?? "—", icon: "brain.head.profile", color: .purple)
                 MetricTile(label: "飲酒", value: healthData?.formattedAlcohol() ?? "—", icon: "wineglass.fill", color: alcoholColor())
-                MetricTile(label: "体重", value: healthData?.formattedWeight() ?? "—", icon: "scalemass.fill", color: .teal)
-                MetricTile(label: "仮眠", value: healthData?.formattedNap() ?? "—", icon: "zzz", color: .cyan)
+                MetricTile(label: "予定", value: calendarDisplay(), icon: "calendar.badge.clock", color: calendarColor())
+                MetricTile(label: "服薬", value: medsDisplay(), icon: "pills.fill", color: medsColor())
             }
         }
     }
@@ -424,6 +425,12 @@ struct DashboardView: View {
             lastResult = try? JSONDecoder().decode(CalculationResult.self, from: data)
         }
 
+        // 対象日の履歴レコードを検索（カレンダー・服薬情報用）
+        let dateFormatter = ISO8601DateFormatter()
+        dateFormatter.formatOptions = [.withFullDate]
+        let dateStr = dateFormatter.string(from: targetDate)
+        selectedRecord = HistoryStore.shared.records.first { $0.date == dateStr }
+
         // 対象日のHealthKitデータ取得
         do {
             healthData = try await HealthKitService.shared.fetchData(for: targetDate)
@@ -517,6 +524,58 @@ struct DashboardView: View {
         guard let d = healthData?.alcohol_drinks else { return .gray }
         if d == 0 { return .green }
         if d <= 2 { return .yellow }
+        return .red
+    }
+
+    // MARK: - カレンダー表示
+
+    private func calendarDisplay() -> String {
+        // lastResultのカレンダー情報を優先、なければHistoryRecordから
+        if let count = lastResult?.calendar_event_count, count > 0 {
+            return "\(count)件"
+        }
+        if let count = selectedRecord?.calendar_event_count {
+            return "\(count)件"
+        }
+        return "—"
+    }
+
+    private func calendarColor() -> Color {
+        let count = lastResult?.calendar_event_count ?? selectedRecord?.calendar_event_count ?? 0
+        if count <= 3 { return .blue }
+        if count <= 5 { return .yellow }
+        return .red
+    }
+
+    // MARK: - 服薬表示
+
+    private func medsDisplay() -> String {
+        // lastResultから優先、なければHistoryRecordから
+        let am = lastResult?.meds_am_taken ?? selectedRecord?.meds_am
+        let pm = lastResult?.meds_pm_taken ?? selectedRecord?.meds_pm
+
+        guard am != nil || pm != nil else { return "—" }
+
+        let amTaken = am ?? false
+        let pmTaken = pm ?? false
+
+        if amTaken && pmTaken { return "朝夕 ✓" }
+        if amTaken { return "朝のみ" }
+        if pmTaken { return "夕のみ" }
+        return "未服薬"
+    }
+
+    private func medsColor() -> Color {
+        let am = lastResult?.meds_am_taken ?? selectedRecord?.meds_am
+        let pm = lastResult?.meds_pm_taken ?? selectedRecord?.meds_pm
+
+        guard am != nil || pm != nil else { return .gray }
+
+        let amTaken = am ?? false
+        let pmTaken = pm ?? false
+
+        if amTaken && pmTaken { return .green }
+        if amTaken || pmTaken { return .yellow }
         return .red
     }
 }
