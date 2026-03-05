@@ -67,6 +67,17 @@ struct InputView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 12) {
+                    // 必須項目ガイド
+                    HStack(spacing: 4) {
+                        Image(systemName: "info.circle")
+                            .font(.caption2)
+                            .foregroundColor(.blue)
+                        Text("「気分（総合）」は必須です")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 4)
                     // 日付セレクタ
                     VStack(spacing: 8) {
                         HStack(spacing: 6) {
@@ -169,10 +180,19 @@ struct InputView: View {
                             .cornerRadius(6)
                     }
 
-                    // 気分（総合）— 4質問の下に配置
-                    StageSelectorView(
-                        selectedStage: $viewModel.moodStage,
-                        title: "気分（総合）"
+                    // 気分（総合）— 4質問の下に配置（必須）
+                    VStack(spacing: 0) {
+                        StageSelectorView(
+                            selectedStage: $viewModel.moodStage,
+                            title: "★ 気分（総合）【必須】"
+                        )
+                    }
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(
+                                viewModel.moodStage != nil ? Color.clear : Color.blue.opacity(0.5),
+                                lineWidth: 2
+                            )
                     )
 
                     // 服薬確認
@@ -254,8 +274,22 @@ struct InputView: View {
                         .transition(.opacity)
                     }
 
+                    // 未入力ヒント
+                    if !canSubmit {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                                .font(.caption)
+                            Text("「気分（総合）」のスライダーを動かしてください")
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                        }
+                        .padding(.vertical, 4)
+                    }
+
                     // 送信ボタン
                     Button(action: {
+                        hideKeyboard()
                         submitData()
                     }) {
                         HStack {
@@ -285,12 +319,24 @@ struct InputView: View {
                             .foregroundColor(.red)
                             .padding(.horizontal)
                     }
+
+                    // 下部余白（キーボード時のスクロール用）
+                    Spacer().frame(height: 20)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("記録")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("完了") {
+                        hideKeyboard()
+                    }
+                }
+            }
             .sheet(isPresented: $showResult) {
                 if let result = calculationResult {
                     ResultView(result: result)
@@ -305,6 +351,11 @@ struct InputView: View {
     /// 送信可能かどうか
     private var canSubmit: Bool {
         viewModel.moodStage != nil
+    }
+
+    /// キーボードを非表示にする
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     /// データ送信

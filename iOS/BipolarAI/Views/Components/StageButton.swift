@@ -64,8 +64,12 @@ struct StageSelectorView: View {
                 Slider(value: $sliderValue, in: -5...5, step: 1) { editing in
                     if editing && !hasInteracted {
                         hasInteracted = true
+                        // 最初のタッチ時にも値をセット（初期値0でも確実に反映）
+                        selectedStage = Int(sliderValue)
                     }
                     if !editing {
+                        // リリース時にも確実にセット
+                        hasInteracted = true
                         selectedStage = Int(sliderValue)
                     }
                 }
