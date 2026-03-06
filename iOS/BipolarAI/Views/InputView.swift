@@ -32,7 +32,7 @@ enum RecordDateOption: String, CaseIterable, Identifiable {
     }
 }
 
-/// 入力画面（定型質問4本 + 気分（総合）+ ジャーナル）
+/// 入力画面（定型質問4本 + 総合+ ジャーナル）
 struct InputView: View {
     @StateObject private var viewModel = InputViewModel()
     @State private var journalText: String = ""
@@ -72,7 +72,7 @@ struct InputView: View {
                         Image(systemName: "info.circle")
                             .font(.caption2)
                             .foregroundColor(.blue)
-                        Text("「気分（総合）」は必須です")
+                        Text("「総合」は必須です")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                         Spacer()
@@ -180,11 +180,11 @@ struct InputView: View {
                             .cornerRadius(6)
                     }
 
-                    // 気分（総合）— 4質問の下に配置（必須）
+                    // 総合— 4質問の下に配置（必須）
                     VStack(spacing: 0) {
                         StageSelectorView(
                             selectedStage: $viewModel.moodStage,
-                            title: "★ 気分（総合）【必須】"
+                            title: "★ 総合【必須】"
                         )
                     }
                     .overlay(
@@ -193,6 +193,7 @@ struct InputView: View {
                                 viewModel.moodStage != nil ? Color.clear : Color.blue.opacity(0.5),
                                 lineWidth: 2
                             )
+                            .allowsHitTesting(false)
                     )
 
                     // 服薬確認
@@ -280,37 +281,15 @@ struct InputView: View {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundColor(.orange)
                                 .font(.caption)
-                            Text("「気分（総合）」のスライダーを動かしてください")
+                            Text("「総合」のスライダーを動かしてください")
                                 .font(.caption)
                                 .foregroundColor(.orange)
                         }
                         .padding(.vertical, 4)
                     }
 
-                    // 送信ボタン
-                    Button(action: {
-                        hideKeyboard()
-                        submitData()
-                    }) {
-                        HStack {
-                            if isSubmitting {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                Text("送信中...")
-                                    .foregroundColor(.white)
-                            } else {
-                                Image(systemName: "paperplane.fill")
-                                Text("\(recordDateDisplay)の記録を送信")
-                                    .fontWeight(.semibold)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(canSubmit ? Color.blue : Color.gray)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
-                    }
-                    .disabled(!canSubmit || isSubmitting)
+                    // 送信ボタン（常にタップ可能、バリデーションはタップ時）
+                    submitButton
 
                     // エラーメッセージ
                     if let errorMessage = errorMessage {
@@ -321,7 +300,7 @@ struct InputView: View {
                     }
 
                     // 下部余白（キーボード時のスクロール用）
-                    Spacer().frame(height: 20)
+                    Spacer().frame(height: 40)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -353,6 +332,38 @@ struct InputView: View {
         viewModel.moodStage != nil
     }
 
+    /// 送信ボタン（.disabledを使わず常にタップ可能）
+    private var submitButton: some View {
+        // .disabled()を使わない。タップ時にバリデーション実施。
+        HStack {
+            if isSubmitting {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                Text("送信中...")
+                    .foregroundColor(.white)
+            } else {
+                Image(systemName: "paperplane.fill")
+                Text("\(recordDateDisplay)の記録を送信")
+                    .fontWeight(.semibold)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(isSubmitting ? Color.gray : (canSubmit ? Color.blue : Color.orange))
+        .foregroundColor(.white)
+        .cornerRadius(12)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !isSubmitting else { return }
+            hideKeyboard()
+            if !canSubmit {
+                errorMessage = "「★ 総合」のスライダーを動かしてから送信してください"
+            } else {
+                submitData()
+            }
+        }
+    }
+
     /// キーボードを非表示にする
     private func hideKeyboard() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
@@ -361,7 +372,7 @@ struct InputView: View {
     /// データ送信
     private func submitData() {
         guard let moodStage = viewModel.moodStage else {
-            errorMessage = "気分（総合）を選択してください"
+            errorMessage = "総合を選択してください"
             return
         }
 
